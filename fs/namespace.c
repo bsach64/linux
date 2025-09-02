@@ -1016,7 +1016,7 @@ static inline bool check_anonymous_mnt(struct mount *mnt)
 {
 	u64 seq;
 
-	if (!is_anon_ns(mnt->mnt_ns))
+	if (!is_anon_ns(mnt->mnt_ns) || is_umount_ns(mnt->mnt_ns))
 		return false;
 
 	seq = mnt->mnt_ns->seq_origin;
@@ -1400,9 +1400,11 @@ static void mntput_no_expire(struct mount *mnt)
 {
 	LIST_HEAD(list);
 	int count;
+	struct mnt_namespace *ns;
 
 	rcu_read_lock();
-	if (likely(READ_ONCE(mnt->mnt_ns))) {
+	ns = READ_ONCE(mnt->mnt_ns);
+	if (likely(ns && !is_umount_ns(ns))) {
 		/*
 		 * Since we don't do lock_mount_hash() here,
 		 * ->mnt_ns can change under us.  However, if it's
@@ -1437,6 +1439,18 @@ static void mntput_no_expire(struct mount *mnt)
 	}
 	mnt->mnt.mnt_flags |= MNT_DOOMED;
 	rcu_read_unlock();
+
+	if (mnt_ns_attached(mnt)) {
+		struct mnt_namespace *ns;
+
+		move_from_ns(mnt);
+		ns = mnt->mnt_ns;
+		if (ns) {
+			ns->nr_mounts--;
+			__touch_mnt_namespace(ns);
+		}
+		mnt->mnt_ns = NULL;
+	}
 
 	list_del(&mnt->mnt_instance);
 	if (unlikely(!list_empty(&mnt->mnt_expire)))
@@ -1885,6 +1899,9 @@ static void umount_tree(struct mount *mnt, enum umount_tree_flags how)
 		 * namespace, etc.
 		 */
 		mnt_notify_add(p);
+
+		mnt_add_to_ns(umount_mnt_ns, p);
+		umount_mnt_ns->nr_mounts++;
 	}
 }
 
@@ -4804,7 +4821,7 @@ static int can_idmap_mount(const struct mount_kattr *kattr, struct mount *mnt)
 		return -EPERM;
 
 	/* Mount has already been visible in the filesystem hierarchy. */
-	if (!is_anon_ns(mnt->mnt_ns))
+	if (!is_anon_ns(mnt->mnt_ns) || is_umount_ns(mnt->mnt_ns))
 		return -EINVAL;
 
 	return 0;

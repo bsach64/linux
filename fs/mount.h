@@ -122,10 +122,18 @@ static inline int mnt_has_parent(const struct mount *mnt)
 	return mnt != mnt->mnt_parent;
 }
 
+extern struct mnt_namespace *umount_mnt_ns;
+
+static inline bool is_umount_ns(struct mnt_namespace *ns)
+{
+	return ns == umount_mnt_ns;
+}
+
 static inline int is_mounted(struct vfsmount *mnt)
 {
+	struct mnt_namespace *ns = READ_ONCE(real_mount(mnt)->mnt_ns);
 	/* neither detached nor internal? */
-	return !IS_ERR_OR_NULL(real_mount(mnt)->mnt_ns);
+	return !IS_ERR_OR_NULL(ns) && !is_umount_ns(ns);
 }
 
 extern struct mount *__lookup_mnt(struct vfsmount *, struct dentry *);
