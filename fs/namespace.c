@@ -107,6 +107,9 @@ struct mount_kattr {
 struct kobject *fs_kobj __ro_after_init;
 EXPORT_SYMBOL_GPL(fs_kobj);
 
+struct mnt_namespace *umount_mnt_ns __ro_after_init;
+EXPORT_SYMBOL_GPL(umount_mnt_ns);
+
 /*
  * vfsmount lock may be taken for read to prevent changes to the
  * vfsmount hash, ie. during mountpoint lookups or walking back
@@ -6121,6 +6124,17 @@ static void __init init_mount_tree(void)
 	set_fs_root(current->fs, &root);
 
 	mnt_ns_tree_add(ns);
+
+	umount_mnt_ns = alloc_mnt_ns(&init_user_ns, true);
+	if (IS_ERR(umount_mnt_ns)) {
+		free_mnt_ns(ns);
+		panic("Can't allocate initial umount namespace");
+	}
+	umount_mnt_ns->seq = atomic64_inc_return(&mnt_ns_seq);
+	umount_mnt_ns->seq_origin = ns->seq;
+	umount_mnt_ns->ns.inum = PROC_UMNT_INIT_INO;
+
+	mnt_ns_tree_add(umount_mnt_ns);
 }
 
 void __init mnt_init(void)
