@@ -201,11 +201,13 @@ struct mnt_id_req {
 	__u64 mnt_id;
 	__u64 param;
 	__u64 mnt_ns_id;
+	__s32 fd;
 };
 
 /* List of all mnt_id_req versions. */
 #define MNT_ID_REQ_SIZE_VER0	24 /* sizeof first published struct */
 #define MNT_ID_REQ_SIZE_VER1	32 /* sizeof second published struct */
+#define MNT_ID_REQ_SIZE_VER2	40 /* sizeof third published struct */
 
 /*
  * @mask bits for statmount(2)
@@ -225,6 +227,12 @@ struct mnt_id_req {
 #define STATMOUNT_SUPPORTED_MASK	0x00001000U	/* Want/got supported mask flags */
 #define STATMOUNT_MNT_UIDMAP		0x00002000U	/* Want/got uidmap... */
 #define STATMOUNT_MNT_GIDMAP		0x00004000U	/* Want/got gidmap... */
+
+/*
+ * Flag that can be passed to statmount to get mountinfo about fd
+ */
+#define STATMOUNT_FD		0x0000001U
+#define STATMOUNT_DETACHED	0x0000002U
 
 /*
  * Special @mnt_id values that can be passed to listmount
