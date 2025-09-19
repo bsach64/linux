@@ -296,16 +296,26 @@ static int statx_lookup_flags(int flags)
 static int vfs_statx_path(struct path *path, int flags, struct kstat *stat,
 			  u32 request_mask)
 {
+	struct mount *real_mnt;
 	int error = vfs_getattr(path, stat, request_mask, flags);
 	if (error)
 		return error;
 
+	real_mnt = real_mount(path->mnt);
+
 	if (request_mask & STATX_MNT_ID_UNIQUE) {
-		stat->mnt_id = real_mount(path->mnt)->mnt_id_unique;
+		stat->mnt_id = real_mnt->mnt_id_unique;
 		stat->result_mask |= STATX_MNT_ID_UNIQUE;
 	} else {
-		stat->mnt_id = real_mount(path->mnt)->mnt_id;
+		stat->mnt_id = real_mnt->mnt_id;
 		stat->result_mask |= STATX_MNT_ID;
+	}
+
+	if (request_mask & STATX_MNT_NS_ID) {
+		if (!real_mnt->mnt_ns)
+			/* returning EINVAL for now */
+			return -EINVAL;
+		stat->mnt_ns_id = real_mnt->mnt_ns->seq;
 	}
 
 	if (path_mounted(path))
@@ -745,6 +755,7 @@ cp_statx(const struct kstat *stat, struct statx __user *buffer)
 	tmp.stx_atomic_write_unit_max = stat->atomic_write_unit_max;
 	tmp.stx_atomic_write_segments_max = stat->atomic_write_segments_max;
 	tmp.stx_atomic_write_unit_max_opt = stat->atomic_write_unit_max_opt;
+	tmp.stx_mnt_ns_id = stat->mnt_ns_id;
 
 	return copy_to_user(buffer, &tmp, sizeof(tmp)) ? -EFAULT : 0;
 }

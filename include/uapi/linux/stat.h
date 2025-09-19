@@ -187,7 +187,8 @@ struct statx {
 	__u32	__spare2[1];
 
 	/* 0xc0 */
-	__u64	__spare3[8];	/* Spare space for future expansion */
+	__u64   stx_mnt_ns_id;
+	__u64	__spare3[7];	/* Spare space for future expansion */
 
 	/* 0x100 */
 };
@@ -219,6 +220,7 @@ struct statx {
 #define STATX_SUBVOL		0x00008000U	/* Want/got stx_subvol */
 #define STATX_WRITE_ATOMIC	0x00010000U	/* Want/got atomic_write_* fields */
 #define STATX_DIO_READ_ALIGN	0x00020000U	/* Want/got dio read alignment info */
+#define STATX_MNT_NS_ID		0x00040000U	/* Want/got stx_mnt_ns_id */
 
 #define STATX__RESERVED		0x80000000U	/* Reserved for future struct statx expansion */
 
