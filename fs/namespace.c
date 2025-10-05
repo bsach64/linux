@@ -1763,6 +1763,17 @@ static bool disconnect_mount(struct mount *mnt, enum umount_tree_flags how)
 	return true;
 }
 
+struct mnt_namespace umount_mnt_ns = {
+	.ns.inum	= UMNT_NS_INIT_INO,
+	.ns.ops		= &mntns_operations,
+	.user_ns	= &init_user_ns,
+	.ns.__ns_ref	= REFCOUNT_INIT(1),
+	.ns.ns_type	= ns_common_type(&umount_mnt_ns),
+	.passive	= REFCOUNT_INIT(1),
+	.mounts		= RB_ROOT,
+	.poll		= __WAIT_QUEUE_HEAD_INITIALIZER(umount_mnt_ns.poll),
+};
+
 /*
  * mount_lock must be held
  * namespace_sem must be held for write
@@ -6019,6 +6030,11 @@ static void __init init_mount_tree(void)
 	set_fs_root(current->fs, &root);
 
 	ns_tree_add(&init_mnt_ns);
+
+	umount_mnt_ns.root = NULL;
+	umount_mnt_ns.nr_mounts = 0;
+	get_mnt_ns(&umount_mnt_ns);
+	ns_tree_add(&umount_mnt_ns);
 }
 
 void __init mnt_init(void)

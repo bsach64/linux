@@ -56,6 +56,7 @@ enum init_ns_ino {
 #ifdef __KERNEL__
 	MNT_NS_ANON_INO		= 0xEFFFFFF7U,
 #endif
+	UMNT_NS_INIT_INO	= 0xEFFFFFF6U,
 };
 
 struct nsfs_file_handle {
