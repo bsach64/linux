@@ -308,6 +308,12 @@ static int vfs_statx_path(const struct path *path, int flags, struct kstat *stat
 		stat->result_mask |= STATX_MNT_ID;
 	}
 
+	if (request_mask & STATX_MNT_NS_ID) {
+		if (!real_mount(path->mnt)->mnt_ns)
+			return -EINVAL;
+		stat->mnt_ns_id = real_mount(path->mnt)->mnt_ns->ns.ns_id;
+	}
+
 	if (path_mounted(path))
 		stat->attributes |= STATX_ATTR_MOUNT_ROOT;
 	stat->attributes_mask |= STATX_ATTR_MOUNT_ROOT;
@@ -745,6 +751,7 @@ cp_statx(const struct kstat *stat, struct statx __user *buffer)
 	tmp.stx_atomic_write_unit_max = stat->atomic_write_unit_max;
 	tmp.stx_atomic_write_segments_max = stat->atomic_write_segments_max;
 	tmp.stx_atomic_write_unit_max_opt = stat->atomic_write_unit_max_opt;
+	tmp.stx_mnt_ns_id = stat->mnt_ns_id;
 
 	return copy_to_user(buffer, &tmp, sizeof(tmp)) ? -EFAULT : 0;
 }
