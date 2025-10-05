@@ -119,7 +119,7 @@ static int __prepend_path(const struct dentry *dentry, const struct mount *mnt,
 			/* Global root */
 			mnt_ns = READ_ONCE(mnt->mnt_ns);
 			/* open-coded is_mounted() to use local mnt_ns */
-			if (!IS_ERR_OR_NULL(mnt_ns) && !is_anon_ns(mnt_ns))
+			if (!IS_ERR_OR_NULL(mnt_ns) && !is_anon_ns(mnt_ns) && !is_umount_ns(mnt_ns))
 				return 1;	// absolute root
 			else
 				return 2;	// detached or not attached yet

@@ -7,6 +7,8 @@
 
 extern struct list_head notify_list;
 
+extern struct mnt_namespace umount_mnt_ns;
+
 struct mnt_namespace {
 	struct ns_common	ns;
 	struct mount *	root;
@@ -28,6 +30,11 @@ struct mnt_namespace {
 	unsigned int		pending_mounts;
 	refcount_t		passive; /* number references not pinning @mounts */
 } __randomize_layout;
+
+static inline bool is_umount_ns(struct mnt_namespace *ns)
+{
+	return ns == &umount_mnt_ns;
+}
 
 struct mnt_pcp {
 	int mnt_count;
@@ -122,7 +129,8 @@ static inline int mnt_has_parent(const struct mount *mnt)
 static inline int is_mounted(struct vfsmount *mnt)
 {
 	/* neither detached nor internal? */
-	return !IS_ERR_OR_NULL(real_mount(mnt)->mnt_ns);
+	struct mnt_namespace *ns = READ_ONCE(real_mount(mnt)->mnt_ns);
+	return !IS_ERR_OR_NULL(ns) && !is_umount_ns(ns);
 }
 
 extern struct mount *__lookup_mnt(struct vfsmount *, struct dentry *);

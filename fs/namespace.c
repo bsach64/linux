@@ -967,7 +967,7 @@ static inline bool check_anonymous_mnt(struct mount *mnt)
 {
 	u64 seq;
 
-	if (!is_anon_ns(mnt->mnt_ns))
+	if (!is_anon_ns(mnt->mnt_ns) || is_umount_ns(mnt->mnt_ns))
 		return false;
 
 	seq = mnt->mnt_ns->seq_origin;
@@ -1322,6 +1322,18 @@ static void cleanup_mnt(struct mount *mnt)
 		hlist_del(&m->mnt_umount);
 		mntput(&m->mnt);
 	}
+
+	scoped_guard(namespace_shared) {
+		if (is_umount_ns(mnt->mnt_ns)) {
+			struct mnt_namespace *ns;
+
+			ns = mnt->mnt_ns;
+			move_from_ns(mnt);
+			ns->nr_mounts--;
+			mnt->mnt_ns = NULL;
+		}
+	}
+
 	fsnotify_vfsmount_delete(&mnt->mnt);
 	dput(mnt->mnt.mnt_root);
 	deactivate_super(mnt->mnt.mnt_sb);
@@ -1844,6 +1856,9 @@ static void umount_tree(struct mount *mnt, enum umount_tree_flags how)
 		 * namespace, etc.
 		 */
 		mnt_notify_add(p);
+
+		mnt_add_to_ns(&umount_mnt_ns, p);
+		umount_mnt_ns.nr_mounts++;
 	}
 }
 
@@ -4689,7 +4704,7 @@ static int can_idmap_mount(const struct mount_kattr *kattr, struct mount *mnt)
 		return -EPERM;
 
 	/* Mount has already been visible in the filesystem hierarchy. */
-	if (!is_anon_ns(mnt->mnt_ns))
+	if (!is_anon_ns(mnt->mnt_ns) || is_umount_ns(mnt->mnt_ns))
 		return -EINVAL;
 
 	return 0;
