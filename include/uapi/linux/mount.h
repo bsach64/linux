@@ -197,18 +197,15 @@ struct statmount {
  */
 struct mnt_id_req {
 	__u32 size;
-	__u32 spare;
+	__u32 fd;
 	__u64 mnt_id;
 	__u64 param;
 	__u64 mnt_ns_id;
-	__s32 fd;
-	__u32 spare2;
 };
 
 /* List of all mnt_id_req versions. */
 #define MNT_ID_REQ_SIZE_VER0	24 /* sizeof first published struct */
 #define MNT_ID_REQ_SIZE_VER1	32 /* sizeof second published struct */
-#define MNT_ID_REQ_SIZE_VER2	40 /* sizeof third published struct */
 
 /*
  * @mask bits for statmount(2)
@@ -238,6 +235,6 @@ struct mnt_id_req {
 /*
  * @flag bits for statmount(2)
  */
-#define STATMOUNT_FD		0x0000001U /* want mountinfo for given fd */
+#define STATMOUNT_BY_FD		0x0000001U /* want mountinfo for given fd */
 
 #endif /* _UAPI_LINUX_MOUNT_H */

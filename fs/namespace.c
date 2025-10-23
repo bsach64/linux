@@ -5590,10 +5590,10 @@ static int do_statmount(struct kstatmount *s, u64 mnt_id, u64 mnt_ns_id,
 	int err;
 
 	/* Has the namespace already been emptied? */
-	if (!(flags & STATMOUNT_FD) && mnt_ns_id && mnt_ns_empty(ns))
+	if (!(flags & STATMOUNT_BY_FD) && mnt_ns_id && mnt_ns_empty(ns))
 		return -ENOENT;
 
-	if (!(flags & STATMOUNT_FD)) {
+	if (!(flags & STATMOUNT_BY_FD)) {
 		s->mnt = lookup_mnt_in_ns(mnt_id, ns);
 		if (!s->mnt)
 			return -ENOENT;
@@ -5739,7 +5739,7 @@ static int copy_mnt_id_req(const struct mnt_id_req __user *req,
 	int ret;
 	size_t usize;
 
-	BUILD_BUG_ON(sizeof(struct mnt_id_req) != MNT_ID_REQ_SIZE_VER2);
+	BUILD_BUG_ON(sizeof(struct mnt_id_req) != MNT_ID_REQ_SIZE_VER1);
 
 	ret = get_user(usize, &req->size);
 	if (ret)
@@ -5752,13 +5752,10 @@ static int copy_mnt_id_req(const struct mnt_id_req __user *req,
 	ret = copy_struct_from_user(kreq, sizeof(*kreq), req, usize);
 	if (ret)
 		return ret;
-	if (kreq->spare != 0)
-		return -EINVAL;
-	if (flags & STATMOUNT_FD) {
-		if (kreq->fd < 0)
-			return -EINVAL;
+	if (flags & STATMOUNT_BY_FD)
 		return 0;
-	}
+	if (kreq->fd != 0)
+		return -EINVAL;
 	/* The first valid unique mount id is MNT_UNIQUE_ID_OFFSET + 1. */
 	if (kreq->mnt_id <= MNT_UNIQUE_ID_OFFSET)
 		return -EINVAL;
@@ -5770,20 +5767,20 @@ static int copy_mnt_id_req(const struct mnt_id_req __user *req,
  * that, or if not simply grab a passive reference on our mount namespace and
  * return that.
  */
-static struct mnt_namespace *grab_requested_mnt_ns(const struct mnt_id_req *kreq)
+static struct mnt_namespace *grab_requested_mnt_ns(const struct mnt_id_req *kreq, unsigned int flags)
 {
 	struct mnt_namespace *mnt_ns;
 
-	if (kreq->mnt_ns_id && kreq->spare)
+	if (kreq->mnt_ns_id && kreq->fd)
 		return ERR_PTR(-EINVAL);
 
 	if (kreq->mnt_ns_id)
 		return lookup_mnt_ns(kreq->mnt_ns_id);
 
-	if (kreq->spare) {
+	if (!(flags & STATMOUNT_BY_FD) && kreq->fd) {
 		struct ns_common *ns;
 
-		CLASS(fd, f)(kreq->spare);
+		CLASS(fd, f)(kreq->fd);
 		if (fd_empty(f))
 			return ERR_PTR(-EBADF);
 
@@ -5803,38 +5800,42 @@ static struct mnt_namespace *grab_requested_mnt_ns(const struct mnt_id_req *kreq
 	return mnt_ns;
 }
 
+DEFINE_FREE(put_file, struct file *, if (_T) fput(_T))
+
 SYSCALL_DEFINE4(statmount, const struct mnt_id_req __user *, req,
 		struct statmount __user *, buf, size_t, bufsize,
 		unsigned int, flags)
 {
 	struct mnt_namespace *ns __free(mnt_ns_release) = NULL;
 	struct kstatmount *ks __free(kfree) = NULL;
+	struct file *file_from_fd __free(put_file) = NULL;
 	struct vfsmount *fd_mnt;
 	struct mnt_id_req kreq;
 	/* We currently support retrieval of 3 strings. */
 	size_t seq_size = 3 * PATH_MAX;
 	int ret;
 
-	if (flags & ~STATMOUNT_FD)
+	if (flags & ~STATMOUNT_BY_FD)
 		return -EINVAL;
 
 	ret = copy_mnt_id_req(req, &kreq, flags);
 	if (ret)
 		return ret;
 
-	if (flags & STATMOUNT_FD) {
-		CLASS(fd_raw, f)(kreq.fd);
-		if (fd_empty(f))
+	if (flags & STATMOUNT_BY_FD) {
+		file_from_fd = fget_raw(kreq.fd);
+		if (!file_from_fd)
 			return -EBADF;
-		fd_mnt = fd_file(f)->f_path.mnt;
+
+		fd_mnt = file_from_fd->f_path.mnt;
 		ns = real_mount(fd_mnt)->mnt_ns;
 		if (ns)
 			refcount_inc(&ns->passive);
 		else
-			if (!ns_capable_noaudit(fd_file(f)->f_cred->user_ns, CAP_SYS_ADMIN))
+			if (!ns_capable_noaudit(file_from_fd->f_cred->user_ns, CAP_SYS_ADMIN))
 				return -ENOENT;
 	} else {
-		ns = grab_requested_mnt_ns(&kreq);
+		ns = grab_requested_mnt_ns(&kreq, flags);
 		if (!ns)
 			return -ENOENT;
 	}
@@ -5852,7 +5853,7 @@ retry:
 	if (ret)
 		return ret;
 
-	if (flags & STATMOUNT_FD)
+	if (flags & STATMOUNT_BY_FD)
 		ks->mnt = fd_mnt;
 
 	scoped_guard(namespace_shared)
@@ -5948,7 +5949,7 @@ static void __free_klistmount_free(const struct klistmount *kls)
 }
 
 static inline int prepare_klistmount(struct klistmount *kls, struct mnt_id_req *kreq,
-				     size_t nr_mnt_ids)
+				     size_t nr_mnt_ids, unsigned int flags)
 {
 
 	u64 last_mnt_id = kreq->param;
@@ -5965,7 +5966,7 @@ static inline int prepare_klistmount(struct klistmount *kls, struct mnt_id_req *
 	if (!kls->kmnt_ids)
 		return -ENOMEM;
 
-	kls->ns = grab_requested_mnt_ns(kreq);
+	kls->ns = grab_requested_mnt_ns(kreq, flags);
 	if (!kls->ns)
 		return -ENOENT;
 
@@ -5999,7 +6000,7 @@ SYSCALL_DEFINE4(listmount, const struct mnt_id_req __user *, req,
 	if (ret)
 		return ret;
 
-	ret = prepare_klistmount(&kls, &kreq, nr_mnt_ids);
+	ret = prepare_klistmount(&kls, &kreq, nr_mnt_ids, flags);
 	if (ret)
 		return ret;
 
